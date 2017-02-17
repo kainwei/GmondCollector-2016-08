@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>10.39.1.57,10.39.1.59,10.39.1.60,10.39.1.62,10.39.1.63</value>
+</property>
+<property>
+    <name>bigmonitor.gmond.address</name>
+    <value>x.x.x.x</value>
+</property>
+<property>
+    <name>bigmonitor.gmond.port</name>
+    <value>8649</value>
+</property>
+<property>
+    <name>hbase.ipc.client.connection.maxidletime</name>
+    <value>60000</value>
+</property>
+
+</configuration>

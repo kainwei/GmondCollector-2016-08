@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<configuration>
+<property>
+  <name>resource.manager.default.name</name>
+  <value>ark://nj01-nanling-ark.dmop.baidu.com:54312</value>
+  <description>default resource manager uri</description>
+</property>
+
+<property>
+  <name>rm.http.url</name>
+  <value>http://nj01-nanling-ark.dmop.baidu.com:8133/resourcemanager.jsp</value>
+  <description>The http port of the resource manager.</description>
+</property>
+
+<property>
+  <name>mapred.job.tracker</name>
+  <value>nj01-nanling-abaci.dmop.baidu.com:54311</value>
+  <final>false</final>
+  <description>The host and port that the MapReduce job tracker runs
+  at.  If "local", then jobs are run in-process as a single map
+  and reduce task.
+  </description>
+</property>
+
+<property>
+    <name>hadoop.job.ugi</name>
+    <value>root,jiqingsishe</value>
+    <description>username, password used by client</description>
+</property>
+<property>
+    <name>hadoop.log.dir</name>
+    <value>/home/szwg-stoff/opdir/kawork/for_job_trouble_shotting/my_tentacles/tentacles_job/logs</value>
+</property>
+
+
+
+</configuration>

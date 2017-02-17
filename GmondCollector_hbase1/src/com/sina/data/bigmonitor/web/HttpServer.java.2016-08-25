@@ -1,0 +1,189 @@
+package com.sina.data.bigmonitor.web;
+
+import com.sina.data.bigmonitor.conf.BigMonitorConstants;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.log4j.PropertyConfigurator;
+import org.mortbay.jetty.Connector;
+import org.mortbay.jetty.Server;
+import org.mortbay.jetty.handler.ContextHandlerCollection;
+import org.mortbay.jetty.nio.SelectChannelConnector;
+import org.mortbay.jetty.servlet.ServletHolder;
+import org.mortbay.jetty.webapp.WebAppContext;
+import org.mortbay.thread.QueuedThreadPool;
+import org.mortbay.util.MultiException;
+
+import javax.servlet.http.HttpServlet;
+import java.io.IOException;
+import java.net.BindException;
+import java.net.URL;
+
+public class HttpServer {
+  
+  static{
+    Configuration.addDefaultResource(BigMonitorConstants.CONFFILE);
+    PropertyConfigurator.configure("conf/log4j.properties");
+  }
+  
+  public static final Log LOG = LogFactory.getLog(HttpServer.class);
+  protected final Server webServer;
+  protected final Connector listener;
+  protected final WebAppContext webAppContext;
+
+  // LimitedPrivate for creating secure datanodes
+  public static Connector createDefaultChannelConnector() {
+    SelectChannelConnector ret = new SelectChannelConnector();
+    ret.setLowResourceMaxIdleTime(10000);
+    ret.setAcceptQueueSize(128);
+    ret.setResolveNames(false);
+    ret.setUseDirectBuffers(false);
+    return ret;
+  }
+
+  /**
+   * Get the pathname to the webapps files.
+   * 
+   * @return the pathname as a URL
+   * @throws IOException
+   *           if 'webapps' directory cannot be found on CLASSPATH.
+   */
+  protected String getWebAppsPath() throws IOException {
+    URL url = getClass().getClassLoader().getResource("webapps");
+    if (url == null)
+      throw new IOException("webapps not found in CLASSPATH");
+    return url.toString();
+  }
+
+  protected void addDefaultServlets() {
+    // set up default servlets
+    addInternalServlet("get", "/get", GetdataServiceServelet.class);
+  }
+
+  public void addInternalServlet(String name, String pathSpec,
+      Class<? extends HttpServlet> clazz) {
+    ServletHolder holder = new ServletHolder(clazz);
+    if (name != null) {
+      holder.setName(name);
+    }
+    webAppContext.addServlet(holder, pathSpec);
+  }
+
+  public HttpServer(String hostname, int port, String appname) throws Exception {
+    webServer = new Server();
+    listener = HttpServer.createDefaultChannelConnector();
+    listener.setHost(hostname);
+    listener.setPort(port);
+    webServer.addConnector(listener);
+    webServer.setThreadPool(new QueuedThreadPool());
+
+    final String appDir = "webapps";
+    ContextHandlerCollection contexts = new ContextHandlerCollection();
+    webServer.setHandler(contexts);
+
+    String[] _systemClasses = { "java.", "javax.", "org.mortbay.", "org.xml.",
+        "org.w3c.", "org.apache.commons.logging.", "org.apache.log4j.",
+        "org.apache." };
+    webAppContext = new WebAppContext();
+    webAppContext.setDisplayName("WepAppsContext");
+    webAppContext.setContextPath("/");
+    webAppContext.setWar(appDir + "/" + appname);
+    webAppContext.setSystemClasses(_systemClasses);
+    webServer.addHandler(webAppContext);
+  }
+
+  /**
+   * Start the server. Does not wait for the server to start.
+   */
+  public void start() throws IOException {
+    try {
+      int port = 0;
+      int oriPort = listener.getPort(); // The original requested port
+      while (true) {
+        try {
+          port = webServer.getConnectors()[0].getLocalPort();
+          LOG.info("Port returned by webServer.getConnectors()[0]."
+              + "getLocalPort() before open() is " + port
+              + ". Opening the listener on " + oriPort);
+          listener.open();
+          port = listener.getLocalPort();
+          LOG.info("listener.getLocalPort() returned "
+              + listener.getLocalPort()
+              + " webServer.getConnectors()[0].getLocalPort() returned "
+              + webServer.getConnectors()[0].getLocalPort());
+          // Workaround to handle the problem reported in HADOOP-4744
+          if (port < 0) {
+            Thread.sleep(100);
+            int numRetries = 1;
+            while (port < 0) {
+              LOG.warn("listener.getLocalPort returned " + port);
+              if (numRetries++ > 10) {
+                throw new Exception(" listener.getLocalPort is returning "
+                    + "less than 0 even after " + numRetries + " resets");
+              }
+              for (int i = 0; i < 2; i++) {
+                LOG.info("Retrying listener.getLocalPort()");
+                port = listener.getLocalPort();
+                if (port > 0) {
+                  break;
+                }
+                Thread.sleep(200);
+              }
+              if (port > 0) {
+                break;
+              }
+              LOG.info("Bouncing the listener");
+              listener.close();
+              Thread.sleep(1000);
+              listener.setPort(oriPort == 0 ? 0 : (oriPort += 1));
+              listener.open();
+              Thread.sleep(100);
+              port = listener.getLocalPort();
+            }
+          } // Workaround end
+          LOG.info("Jetty bound to port " + port);
+          webServer.start();
+          break;
+        } catch (IOException ex) {
+          // if this is a bind exception,
+          // then try the next port number.
+          if (ex instanceof BindException) {
+            throw (BindException) ex;
+          } else {
+            LOG.info("HttpServer.start() threw a non Bind IOException");
+            throw ex;
+          }
+        } catch (MultiException ex) {
+          LOG.info("HttpServer.start() threw a MultiException");
+          throw ex;
+        }
+      }
+    } catch (IOException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new IOException("Problem starting http server", e);
+    }
+  }
+
+  /**
+   * stop the server
+   */
+  public void stop() throws Exception {
+    listener.close();
+    webServer.stop();
+  }
+
+  public static void main(String[] args) {
+    try {
+      Configuration conf = new Configuration();
+      String bindAddress = conf.get(BigMonitorConstants.WebAddressKey, "0.0.0.0");
+      int port = conf.getInt(BigMonitorConstants.WebPortKey, 8080);
+      HttpServer server = new HttpServer(bindAddress, port, "get");
+      server.addInternalServlet("get", "/get", GetdataServiceServelet.class);
+      server.start();
+    } catch (Exception e) {
+      LOG.error("Error", e);
+    }
+  }
+
+}

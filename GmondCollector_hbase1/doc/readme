@@ -1,0 +1,7 @@
+监控系统-01-收集数据
+
+hbase中写入的数据
+key中有时间戳的，
+时间戳的值都为ganglia的xml中带的值。
+
+编译命令：mvn -DskipTests clean package
